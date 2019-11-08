@@ -6,7 +6,8 @@ import File from '../models/File';
 import Appointment from '../models/Appointment';
 import Notification from '../schemas/Notification';
 
-import Mail from '../../lib/Mail';
+import CancellationMail from '../jobs/CancellationMail';
+import Queue from '../../lib/Queue';
 
 class AppointmentController {
   async index(req, res) {
@@ -33,6 +34,7 @@ class AppointmentController {
         },
       ],
     });
+
     return res.json(appoinments);
   }
 
@@ -50,9 +52,11 @@ class AppointmentController {
     /**
      * check if provider_id is a provider
      */
+
     const checkIsProvider = await User.findOne({
       where: { id: provider_id, provider: true },
     });
+
     if (!checkIsProvider) {
       return res
         .status(401)
@@ -60,14 +64,13 @@ class AppointmentController {
     }
 
     /**
-     * check user equal provider
+     * check user equal provider
      */
     if (provider_id === req.userId) {
       return res
         .status(401)
-        .json({ error: 'User cannot be same as providers' });
+        .json({ error: 'User cannot be same as providers' });
     }
-
     /*
      * check for past date
      */
@@ -127,6 +130,11 @@ class AppointmentController {
           as: 'provider',
           attributes: ['name', 'email'],
         },
+        {
+          model: User,
+          as: 'user',
+          attributes: ['name'],
+        },
       ],
     });
 
@@ -148,10 +156,8 @@ class AppointmentController {
 
     await appointment.save();
 
-    await Mail.sendMail({
-      to: `${appointment.provider.name} <${appointment.provider.email}>`,
-      subject: 'Agendamento cancelado',
-      text: 'Você tem um novo cancelamento',
+    await Queue.add(CancellationMail.key, {
+      appointment,
     });
 
     return res.json(appointment);
